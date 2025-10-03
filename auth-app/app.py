@@ -1,0 +1,360 @@
+from flask import Flask, render_template, request, redirect, session, jsonify, url_for
+import sqlite3
+import hashlib
+import os
+import secrets
+from datetime import datetime, timedelta
+from functools import wraps
+
+# In your Flask app initialization
+SECRET_KEY = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
+
+app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'cambiar-este-secret-por-favor')
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
+
+DATABASE = os.environ.get('DATABASE_PATH', '/data/users.db')
+
+def init_db():
+    """Inicializar la base de datos con los 9 usuarios"""
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password_hash TEXT NOT NULL,
+            email TEXT,
+            must_change_password INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_login TIMESTAMP,
+            failed_attempts INTEGER DEFAULT 0,
+            locked_until TIMESTAMP
+        )
+    ''')
+    
+    # Crear los 9 usuarios ahid1 a ahid9 con contraseña igual al usuario
+    for i in range(1, 10):
+        username = f'ahid{i}'
+        password_hash = hash_password(username)
+        c.execute('''
+            INSERT OR IGNORE INTO users 
+            (username, password_hash, email, must_change_password)
+            VALUES (?, ?, ?, 1)
+        ''', (username, password_hash, f'{username}@ardor.link'))
+    
+    conn.commit()
+    conn.close()
+    print("Base de datos inicializada con 9 usuarios (ahid1-ahid9)")
+
+def hash_password(password):
+    """Hashear contraseña con SHA256"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def check_password_strength(password):
+    """Verifica que la contraseña sea robusta"""
+    if len(password) < 8:
+        return False, "La contraseña debe tener al menos 8 caracteres"
+    if not any(c.isupper() for c in password):
+        return False, "Debe contener al menos una mayúscula"
+    if not any(c.islower() for c in password):
+        return False, "Debe contener al menos una minúscula"
+    if not any(c.isdigit() for c in password):
+        return False, "Debe contener al menos un número"
+    if not any(c in '!@#$%^&*()_+-=[]{}|;:,.<>?' for c in password):
+        return False, "Debe contener al menos un carácter especial (!@#$%...)"
+    return True, "OK"
+
+def require_auth(f):
+    """Decorator para rutas que requieren autenticación"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'username' not in session:
+            return redirect(url_for('login', rd=request.url))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def is_user_locked(username):
+    """Verifica si el usuario está bloqueado por intentos fallidos"""
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('SELECT locked_until FROM users WHERE username = ?', (username,))
+    result = c.fetchone()
+    conn.close()
+    
+    if result and result[0]:
+        locked_until = datetime.fromisoformat(result[0])
+        if datetime.now() < locked_until:
+            return True, locked_until
+    return False, None
+
+def record_failed_attempt(username):
+    """Registra un intento fallido de login"""
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('SELECT failed_attempts FROM users WHERE username = ?', (username,))
+    result = c.fetchone()
+    
+    if result:
+        failed_attempts = result[0] + 1
+        if failed_attempts >= 5:
+            # Bloquear por 15 minutos después de 5 intentos
+            locked_until = datetime.now() + timedelta(minutes=15)
+            c.execute('''
+                UPDATE users 
+                SET failed_attempts = ?, locked_until = ?
+                WHERE username = ?
+            ''', (failed_attempts, locked_until.isoformat(), username))
+        else:
+            c.execute('''
+                UPDATE users 
+                SET failed_attempts = ?
+                WHERE username = ?
+            ''', (failed_attempts, username))
+    
+    conn.commit()
+    conn.close()
+
+def reset_failed_attempts(username):
+    """Resetea los intentos fallidos después de login exitoso"""
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute('''
+        UPDATE users 
+        SET failed_attempts = 0, locked_until = NULL
+        WHERE username = ?
+    ''', (username,))
+    conn.commit()
+    conn.close()
+
+@app.route('/')
+def index():
+    """Página principal - portal de usuario"""
+    if 'username' in session:
+        return render_template('portal.html', username=session['username'])
+    return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Página de login"""
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        
+        if not username or not password:
+            return render_template('login.html', 
+                                 error='Usuario y contraseña son requeridos')
+        
+        # Verificar si está bloqueado
+        is_locked, locked_until = is_user_locked(username)
+        if is_locked:
+            minutes_left = int((locked_until - datetime.now()).total_seconds() / 60)
+            return render_template('login.html', 
+                                 error=f'Usuario bloqueado. Intenta en {minutes_left} minutos.')
+        
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('''
+            SELECT password_hash, must_change_password, failed_attempts 
+            FROM users WHERE username = ?
+        ''', (username,))
+        user = c.fetchone()
+        conn.close()
+        
+        if user and user[0] == hash_password(password):
+            # Login exitoso
+            session.permanent = True
+            session['username'] = username
+            session['authenticated'] = True
+            
+            # Resetear intentos fallidos
+            reset_failed_attempts(username)
+            
+            # Actualizar último login
+            conn = sqlite3.connect(DATABASE)
+            c = conn.cursor()
+            c.execute('UPDATE users SET last_login = ? WHERE username = ?', 
+                     (datetime.now().isoformat(), username))
+            conn.commit()
+            conn.close()
+            
+            # Si debe cambiar contraseña (primer login)
+            if user[1] == 1:
+                return redirect(url_for('force_change_password', 
+                                      rd=request.args.get('rd', '/')))
+            
+            # Redirigir a donde venía o al portal
+            redirect_url = request.args.get('rd', '/')
+            return redirect(redirect_url)
+        else:
+            # Login fallido
+            if user:  # Usuario existe pero contraseña incorrecta
+                record_failed_attempt(username)
+            return render_template('login.html', 
+                                 error='Usuario o contraseña incorrectos')
+    
+    # GET request
+    return render_template('login.html')
+
+@app.route('/force-change-password', methods=['GET', 'POST'])
+@require_auth
+def force_change_password():
+    """Forzar cambio de contraseña en primer login"""
+    if request.method == 'POST':
+        current_password = request.form.get('current_password', '')
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        
+        if not all([current_password, new_password, confirm_password]):
+            return render_template('first_login.html', 
+                                 error='Todos los campos son requeridos')
+        
+        if new_password != confirm_password:
+            return render_template('first_login.html', 
+                                 error='Las contraseñas nuevas no coinciden')
+        
+        # Verificar robustez
+        is_strong, message = check_password_strength(new_password)
+        if not is_strong:
+            return render_template('first_login.html', error=message)
+        
+        # Verificar contraseña actual
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('SELECT password_hash FROM users WHERE username = ?', 
+                 (session['username'],))
+        user = c.fetchone()
+        
+        if user and user[0] == hash_password(current_password):
+            # Actualizar contraseña
+            new_hash = hash_password(new_password)
+            c.execute('''
+                UPDATE users 
+                SET password_hash = ?, must_change_password = 0 
+                WHERE username = ?
+            ''', (new_hash, session['username']))
+            conn.commit()
+            conn.close()
+            
+            redirect_url = request.args.get('rd', '/')
+            return redirect(redirect_url)
+        else:
+            conn.close()
+            return render_template('first_login.html', 
+                                 error='Contraseña actual incorrecta')
+    
+    return render_template('first_login.html')
+
+@app.route('/change-password', methods=['GET', 'POST'])
+@require_auth
+def change_password():
+    """Cambiar contraseña cuando el usuario quiera"""
+    if request.method == 'POST':
+        current_password = request.form.get('current_password', '')
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        
+        if not all([current_password, new_password, confirm_password]):
+            return render_template('change_password.html', 
+                                 error='Todos los campos son requeridos')
+        
+        if new_password != confirm_password:
+            return render_template('change_password.html', 
+                                 error='Las contraseñas nuevas no coinciden')
+        
+        is_strong, message = check_password_strength(new_password)
+        if not is_strong:
+            return render_template('change_password.html', error=message)
+        
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('SELECT password_hash FROM users WHERE username = ?', 
+                 (session['username'],))
+        user = c.fetchone()
+        
+        if user and user[0] == hash_password(current_password):
+            new_hash = hash_password(new_password)
+            c.execute('UPDATE users SET password_hash = ? WHERE username = ?',
+                     (new_hash, session['username']))
+            conn.commit()
+            conn.close()
+            return render_template('change_password.html', 
+                                 success='Contraseña cambiada exitosamente')
+        else:
+            conn.close()
+            return render_template('change_password.html', 
+                                 error='Contraseña actual incorrecta')
+    
+    return render_template('change_password.html')
+
+@app.route('/auth/validate')
+def auth_validate():
+    """Endpoint para nginx auth_request - valida si el usuario está autenticado"""
+    if session.get('authenticated'):
+        username = session.get('username', '')
+        
+        # Verificar que no necesite cambiar contraseña
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('SELECT must_change_password, email FROM users WHERE username = ?', 
+                 (username,))
+        user = c.fetchone()
+        conn.close()
+        
+        if user and user[0] == 1:
+            # Debe cambiar contraseña, no autorizar
+            return '', 401
+        
+        email = user[1] if user else f'{username}@ardor.link'
+        
+        # Retornar headers para nginx
+        response = app.make_response(('', 200))
+        response.headers['X-Auth-Request-User'] = username
+        response.headers['X-Auth-Request-Email'] = email
+        return response
+    
+    return '', 401
+
+@app.route('/oauth/validate')
+def oauth_validate():
+    """Alias para compatibilidad"""
+    return auth_validate()
+
+@app.route('/oauth/token', methods=['POST'])
+def oauth_token():
+    """Endpoint dummy para OAuth2 Proxy"""
+    return jsonify({'access_token': 'dummy', 'token_type': 'Bearer'})
+
+@app.route('/oauth/userinfo')
+def oauth_userinfo():
+    """Endpoint para información del usuario"""
+    if session.get('authenticated'):
+        username = session.get('username', '')
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        c.execute('SELECT email FROM users WHERE username = ?', (username,))
+        user = c.fetchone()
+        conn.close()
+        
+        email = user[0] if user else f'{username}@ardor.link'
+        return jsonify({
+            'sub': username,
+            'email': email,
+            'name': username
+        })
+    return jsonify({'error': 'unauthorized'}), 401
+
+@app.route('/logout')
+def logout():
+    """Cerrar sesión"""
+    session.clear()
+    return redirect(url_for('login'))
+
+if __name__ == '__main__':
+    # Crear directorio de datos si no existe
+    os.makedirs(os.path.dirname(DATABASE), exist_ok=True)
+    
+    # Inicializar base de datos
+    init_db()
+    
+    # Ejecutar app
+    app.run(host='0.0.0.0', port=5000, debug=False)
