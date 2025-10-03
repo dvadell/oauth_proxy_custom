@@ -1,13 +1,15 @@
 services:
   auth-app:
-    build: ./auth-app
+    build: .
     container_name: auth-app
     volumes:
-      - ./auth-app:/app
-      - ./data:/data
+      - auth-app-data:/data
     environment:
       - DATABASE_PATH=/data/users.db
       - FLASK_ENV=production
     ports:
       - "7906:5000"  # Flask app - Expuesto para NPM
     restart: unless-stopped
+volumes:
+  auth-app-data:
+
