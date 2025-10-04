@@ -1,6 +1,5 @@
 import os
-import sqlite3
-from app import get_db, hash_password, DATABASE
+from app import get_db, hash_password
 
 
 def test_index_logged_out(client):
@@ -132,9 +131,7 @@ def test_login_redirect_rd_parameter(client):
     response = client.post(
         f"/login?rd={redirect_target}",
         data={"username": username, "password": password},
-        headers={
-            "Host": "auth.of.ardor.link"
-        },
+        headers={"Host": "auth.of.ardor.link"},
         follow_redirects=False,
     )
     assert response.status_code == 302
@@ -161,7 +158,11 @@ def test_session_persistence_after_login(client):
     db.commit()
 
     # Log in the user
-    client.post("/login", data={"username": username, "password": password}, follow_redirects=True)
+    client.post(
+        "/login",
+        data={"username": username, "password": password},
+        follow_redirects=True,
+    )
 
     # Access a protected page (e.g., the portal page)
     response = client.get("/")
@@ -194,7 +195,11 @@ def test_change_password_redirect_no_rd(client):
     )
     db.commit()
 
-    client.post("/login", data={"username": username, "password": old_password}, follow_redirects=True)
+    client.post(
+        "/login",
+        data={"username": username, "password": old_password},
+        follow_redirects=True,
+    )
 
     # Access a protected page to ensure session is active
     client.get("/")
@@ -232,7 +237,11 @@ def test_change_password_redirect_safe_rd(client):
     )
     db.commit()
 
-    client.post("/login", data={"username": username, "password": old_password}, follow_redirects=True)
+    client.post(
+        "/login",
+        data={"username": username, "password": old_password},
+        follow_redirects=True,
+    )
 
     # Access a protected page to ensure session is active
     client.get("/")
@@ -271,7 +280,11 @@ def test_change_password_redirect_unsafe_rd(client):
     )
     db.commit()
 
-    client.post("/login", data={"username": username, "password": old_password}, follow_redirects=True)
+    client.post(
+        "/login",
+        data={"username": username, "password": old_password},
+        follow_redirects=True,
+    )
 
     # Access a protected page to ensure session is active
     client.get("/")

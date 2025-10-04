@@ -1,12 +1,13 @@
+# ruff: noqa: E402
+import os
 import pytest
 import tempfile
-import os
 
 # Set a test secret key before importing the app
 os.environ["SECRET_KEY"] = "test-secret-key"
 
-from app import app as flask_app  # noqa: E402
-import app as app_module  # noqa: E402
+from app import app as flask_app
+import app as app_module
 from app import get_db, hash_password
 
 
@@ -21,7 +22,7 @@ def app():
             "TESTING": True,
             "DATABASE": db_path,
             "WTF_CSRF_ENABLED": False,  # Disable CSRF for testing forms
-            "SESSION_COOKIE_DOMAIN": None, # Disable SESSION_COOKIE_DOMAIN for testing
+            "SESSION_COOKIE_DOMAIN": None,  # Disable SESSION_COOKIE_DOMAIN for testing
             "ALLOWED_REDIRECT_DOMAIN": os.environ.get("ALLOWED_REDIRECT_DOMAIN"),
         }
     )
@@ -68,6 +69,10 @@ def logged_in_client(client):
         db.commit()
 
     # Log in the user
-    client.post("/login", data={"username": username, "password": password}, follow_redirects=True)
+    client.post(
+        "/login",
+        data={"username": username, "password": password},
+        follow_redirects=True,
+    )
 
     return client

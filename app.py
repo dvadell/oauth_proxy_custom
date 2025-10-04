@@ -15,7 +15,7 @@ import os
 import click
 from datetime import datetime, timedelta
 from functools import wraps
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse
 from flask_wtf.csrf import CSRFProtect
 
 # In your Flask app initialization
