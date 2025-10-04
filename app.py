@@ -36,9 +36,9 @@ SESSION_TIMEOUT_HOURS = int(os.environ.get("SESSION_TIMEOUT_HOURS", 24))
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 app.config.update(
-    SESSION_COOKIE_SECURE=True,      # HTTPS only
-    SESSION_COOKIE_HTTPONLY=True,    # No JavaScript access
-    SESSION_COOKIE_SAMESITE='Lax',   # CSRF protection
+    SESSION_COOKIE_SECURE=True,  # HTTPS only
+    SESSION_COOKIE_HTTPONLY=True,  # No JavaScript access
+    SESSION_COOKIE_SAMESITE="Lax",  # CSRF protection
 )
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=SESSION_TIMEOUT_HOURS)
 if ALLOWED_REDIRECT_DOMAIN:
@@ -152,37 +152,58 @@ def require_auth(f):
 
 def is_safe_url(target):
     """Verifica si una URL es segura para redireccionar"""
-    # Parse the target URL directly
-    test_url = urlparse(target)
+    if not target:
+        return False
 
+    # Reject overly long URLs
+    if len(target) > 2048:
+        return False
+
+    # Parse the target URL
+    try:
+        test_url = urlparse(target)
+    except Exception:
+        return False
+
+    # Reject URLs with embedded credentials
+    if test_url.username or test_url.password:
+        return False
+
+    # Relative URLs (no netloc) are safe
     if not test_url.netloc:
-        # If no netloc, it's a relative URL, consider it safe if it's within the app
+        # But make sure they don't start with // (protocol-relative)
+        if target.startswith("//"):
+            return False
         return True
 
-    # Use app.config.get to retrieve ALLOWED_REDIRECT_DOMAIN
-    configured_allowed_domain = app.config.get("ALLOWED_REDIRECT_DOMAIN")
+    # For absolute URLs, verify scheme is http/https
+    if test_url.scheme not in ("http", "https"):
+        return False
 
-    if configured_allowed_domain:
-        base_domain_check = (
-            test_url.netloc == configured_allowed_domain
-            or test_url.netloc.endswith(f".{configured_allowed_domain}")
+    # Check against ALLOWED_REDIRECT_DOMAIN (from environment or global)
+    allowed_domain = (
+        os.environ.get("ALLOWED_REDIRECT_DOMAIN") or ALLOWED_REDIRECT_DOMAIN
+    )
+
+    if allowed_domain:
+        # Check if netloc matches or is a subdomain
+        return test_url.netloc == allowed_domain or test_url.netloc.endswith(
+            f".{allowed_domain}"
         )
+
+    # Fallback: if no allowed domain configured, derive from request
+    ref_url = urlparse(request.host_url)
+    host_parts = ref_url.netloc.split(".")
+    if len(host_parts) >= 2:
+        derived_base_domain = ".".join(host_parts[-2:])
     else:
-        # Fallback to deriving from host_url if not configured
-        ref_url = urlparse(request.host_url)
-        host_parts = ref_url.netloc.split(".")
-        if len(host_parts) >= 2:
-            derived_base_domain = ".".join(host_parts[-2:])
-        else:
-            derived_base_domain = ref_url.netloc
+        derived_base_domain = ref_url.netloc
 
-        base_domain_check = (
-            test_url.netloc == ref_url.netloc
-            or test_url.netloc.endswith(f".{derived_base_domain}")
-            or test_url.netloc == derived_base_domain
-        )
-
-    return test_url.scheme in ("http", "https") and base_domain_check
+    return (
+        test_url.netloc == ref_url.netloc
+        or test_url.netloc.endswith(f".{derived_base_domain}")
+        or test_url.netloc == derived_base_domain
+    )
 
 
 def is_user_locked(username):
