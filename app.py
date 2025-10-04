@@ -45,6 +45,31 @@ if ALLOWED_REDIRECT_DOMAIN:
     app.config["SESSION_COOKIE_DOMAIN"] = f".{ALLOWED_REDIRECT_DOMAIN}"
 csrf = CSRFProtect(app)
 
+csrf = CSRFProtect(app)
+
+
+# Security headers
+@app.after_request
+def set_security_headers(response):
+    """Add security headers to all responses"""
+    # Prevent MIME type sniffing
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+    # Prevent clickjacking by disallowing iframes
+    response.headers["X-Frame-Options"] = "DENY"
+
+    # Enable browser XSS protection (legacy, but doesn't hurt)
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+
+    # Force HTTPS for 1 year (only if using HTTPS in production)
+    # Comment out if testing locally without HTTPS
+    response.headers["Strict-Transport-Security"] = (
+        "max-age=31536000; includeSubDomains"
+    )
+
+    return response
+
+
 # Get the directory where this script is located
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 # Define the default database path relative to the app root
