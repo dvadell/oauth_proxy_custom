@@ -81,7 +81,3 @@ For a new, first-time deployment, follow these steps on your production server:
     ```bash
     docker-compose -f docker-compose.prod.yml up -d
     ```
-
-### 4. Future Updates and Migrations
-
-The `init-db` command is only for the initial setup. For future updates that require changes to the database schema (e.g., adding a new column), you will need a proper database migration strategy. Using a tool like `Flask-Migrate` is highly recommended for this purpose to ensure data is not lost during updates.
