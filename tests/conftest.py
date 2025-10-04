@@ -3,10 +3,11 @@ import tempfile
 import os
 
 # Set a test secret key before importing the app
-os.environ['SECRET_KEY'] = 'test-secret-key'
+os.environ["SECRET_KEY"] = "test-secret-key"
 
-from app import app as flask_app
-import app as app_module
+from app import app as flask_app  # noqa: E402
+import app as app_module  # noqa: E402
+
 
 @pytest.fixture
 def app():
@@ -14,11 +15,13 @@ def app():
     # Create a temporary file to isolate the database for each test
     db_fd, db_path = tempfile.mkstemp()
 
-    flask_app.config.update({
-        "TESTING": True,
-        "DATABASE": db_path,
-        "WTF_CSRF_ENABLED": False # Disable CSRF for testing forms
-    })
+    flask_app.config.update(
+        {
+            "TESTING": True,
+            "DATABASE": db_path,
+            "WTF_CSRF_ENABLED": False,  # Disable CSRF for testing forms
+        }
+    )
 
     # Monkeypatch the DATABASE variable in the app module
     app_module.DATABASE = db_path
@@ -26,6 +29,7 @@ def app():
     # Create the database and the tables
     with flask_app.app_context():
         from app import init_db
+
         init_db()
 
     yield flask_app
