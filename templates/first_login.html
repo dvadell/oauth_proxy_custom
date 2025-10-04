@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Iniciar Sesión - Auth Portal</title>
+    <title>Cambio de Contraseña Requerido</title>
     <style>
         * {
             margin: 0;
@@ -21,30 +21,30 @@
             padding: 20px;
         }
         
-        .login-container {
+        .change-container {
             background: white;
             border-radius: 20px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
             padding: 50px 40px;
-            max-width: 400px;
+            max-width: 500px;
             width: 100%;
         }
         
-        .logo {
+        .header {
             text-align: center;
-            margin-bottom: 40px;
+            margin-bottom: 30px;
         }
         
-        .logo h1 {
+        .header h1 {
             color: #667eea;
-            font-size: 32px;
+            font-size: 28px;
             font-weight: 700;
+            margin-bottom: 10px;
         }
         
-        .logo p {
+        .header p {
             color: #666;
             font-size: 14px;
-            margin-top: 5px;
         }
         
         .form-group {
@@ -59,7 +59,6 @@
             font-size: 14px;
         }
         
-        input[type="text"],
         input[type="password"] {
             width: 100%;
             padding: 12px 15px;
@@ -69,11 +68,33 @@
             transition: all 0.3s ease;
         }
         
-        input[type="text"]:focus,
         input[type="password"]:focus {
             outline: none;
             border-color: #667eea;
             box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
+        }
+        
+        .password-requirements {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .password-requirements h3 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .password-requirements ul {
+            margin-left: 20px;
+        }
+        
+        .password-requirements li {
+            margin: 5px 0;
         }
         
         .btn-primary {
@@ -87,6 +108,7 @@
             font-weight: 600;
             cursor: pointer;
             transition: transform 0.2s ease, box-shadow 0.2s ease;
+            margin-top: 10px;
         }
         
         .btn-primary:hover {
@@ -111,25 +133,13 @@
             color: #c33;
         }
         
-        .alert-success {
-            background: #efe;
-            border: 1px solid #cfc;
-            color: #3c3;
-        }
-        
-        .footer {
-            text-align: center;
-            margin-top: 30px;
-            color: #999;
-            font-size: 13px;
-        }
     </style>
 </head>
 <body>
-    <div class="login-container">
-        <div class="logo">
-            <h1>🔐 Auth Portal</h1>
-            <p>Sistema de Autenticación</p>
+    <div class="change-container">
+        <div class="header">
+            <h1>🔑 Cambio de Contraseña Requerido</h1>
+            <p>Por su seguridad, debe cambiar su contraseña.</p>
         </div>
         
         {% if error %}
@@ -141,21 +151,33 @@
         <form method="POST">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div class="form-group">
-                <label for="username">Usuario</label>
-                <input type="text" id="username" name="username" required autofocus>
+                <label for="current_password">Contraseña Actual (es su nombre de usuario)</label>
+                <input type="password" id="current_password" name="current_password" required autofocus>
             </div>
             
             <div class="form-group">
-                <label for="password">Contraseña</label>
-                <input type="password" id="password" name="password" required>
+                <label for="new_password">Nueva Contraseña</label>
+                <input type="password" id="new_password" name="new_password" required>
             </div>
             
-            <button type="submit" class="btn-primary">Iniciar Sesión</button>
+            <div class="form-group">
+                <label for="confirm_password">Confirmar Nueva Contraseña</label>
+                <input type="password" id="confirm_password" name="confirm_password" required>
+            </div>
+            
+            <div class="password-requirements">
+                <h3>📋 Requisitos de la contraseña:</h3>
+                <ul>
+                    <li>Mínimo 8 caracteres</li>
+                    <li>Al menos una letra mayúscula (A-Z)</li>
+                    <li>Al menos una letra minúscula (a-z)</li>
+                    <li>Al menos un número (0-9)</li>
+                    <li>Al menos un carácter especial (!@#$%...)</li>
+                </ul>
+            </div>
+            
+            <button type="submit" class="btn-primary">Establecer Nueva Contraseña</button>
         </form>
-        
-        <div class="footer">
-            <p>Ardor Link Authentication System</p>
-        </div>
     </div>
 </body>
 </html>

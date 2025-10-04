@@ -15,140 +15,143 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             padding: 20px;
         }
         
-        .container {
-            max-width: 800px;
-            margin: 50px auto;
+        .portal-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 50px 40px;
+            max-width: 600px;
+            width: 100%;
         }
         
         .header {
-            background: white;
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            margin-bottom: 30px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            text-align: center;
+            margin-bottom: 40px;
         }
         
         .header h1 {
             color: #667eea;
-            font-size: 28px;
-        }
-        
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        
-        .username {
-            color: #333;
-            font-weight: 600;
-        }
-        
-        .btn-logout {
-            padding: 10px 20px;
-            background: #f5576c;
-            color: white;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            font-weight: 600;
-            text-decoration: none;
-            display: inline-block;
-        }
-        
-        .btn-logout:hover {
-            background: #e04555;
-        }
-        
-        .cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-        }
-        
-        .card {
-            background: white;
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            text-align: center;
-            transition: transform 0.3s ease;
-        }
-        
-        .card:hover {
-            transform: translateY(-5px);
-        }
-        
-        .card-icon {
-            font-size: 48px;
-            margin-bottom: 15px;
-        }
-        
-        .card h2 {
-            color: #333;
-            font-size: 20px;
+            font-size: 32px;
+            font-weight: 700;
             margin-bottom: 10px;
         }
         
-        .card p {
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 20px;
+        .welcome {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            margin-bottom: 30px;
         }
         
-        .btn {
-            padding: 12px 24px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        .welcome h2 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        
+        .welcome p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .menu-card {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            text-decoration: none;
+            display: block;
+            color: inherit;
+        }
+        
+        .menu-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            background: #e9ecef;
+        }
+        
+        .menu-card .icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .menu-card h3 {
+            color: #333;
+            font-size: 18px;
+            margin-bottom: 5px;
+        }
+        
+        .menu-card p {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .logout-btn {
+            width: 100%;
+            padding: 14px;
+            background: #dc3545;
             color: white;
             border: none;
             border-radius: 10px;
-            cursor: pointer;
+            font-size: 16px;
             font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-top: 20px;
             text-decoration: none;
-            display: inline-block;
+            display: block;
+            text-align: center;
         }
         
-        .btn:hover {
-            opacity: 0.9;
+        .logout-btn:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(220,53,69,0.3);
+        }
+        
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 30px;
+            font-size: 14px;
+            color: #0c5460;
         }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="portal-container">
         <div class="header">
-            <h1>🏠 Portal de Usuario</h1>
-            <div class="user-info">
-                <span class="username">👤 {{ username }}</span>
-                <a href="/logout" class="btn-logout">Cerrar Sesión</a>
-            </div>
+            <h1>🔐 Portal de Usuario</h1>
         </div>
         
-        <div class="cards">
-            <div class="card">
-                <div class="card-icon">🔑</div>
-                <h2>Cambiar Contraseña</h2>
-                <p>Actualiza tu contraseña en cualquier momento</p>
-                <a href="/change-password" class="btn">Ir a Cambio de Contraseña</a>
-            </div>
-            
-            <div class="card">
-                <div class="card-icon">✅</div>
-                <h2>Sesión Activa</h2>
-                <p>Tu sesión está activa y protegiendo tus aplicaciones</p>
-            </div>
-            
-            <div class="card">
-                <div class="card-icon">🛡️</div>
-                <h2>Seguridad</h2>
-                <p>Tu cuenta está protegida con autenticación segura</p>
-            </div>
+        <div class="welcome">
+            <h2>¡Bienvenido, {{ username }}!</h2>
+            <p>Has iniciado sesión correctamente</p>
         </div>
+        
+        <a href="/change-password" class="menu-card">
+            <div class="icon">🔑</div>
+            <h3>Cambiar Contraseña</h3>
+            <p>Actualiza tu contraseña en cualquier momento</p>
+        </a>
+        
+        <div class="info-box">
+            <strong>ℹ️ Información:</strong><br>
+            Este es tu portal de autenticación. Desde aquí puedes gestionar tu cuenta y cambiar tu contraseña cuando lo necesites.
+        </div>
+        
+        <a href="/logout" class="logout-btn">Cerrar Sesión</a>
     </div>
 </body>
 </html>

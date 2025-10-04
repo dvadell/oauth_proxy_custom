@@ -1,17 +1,22 @@
 from flask import Flask, render_template, request, redirect, session, jsonify, url_for
+from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
-import hashlib
 import os
 import secrets
 from datetime import datetime, timedelta
 from functools import wraps
+from urllib.parse import urlparse, urljoin
+from flask_wtf.csrf import CSRFProtect
 
 # In your Flask app initialization
-SECRET_KEY = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY:
+    raise ValueError("No SECRET_KEY set for Flask application. Please set it as an environment variable for production.")
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'cambiar-este-secret-por-favor')
+app.secret_key = SECRET_KEY
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
+csrf = CSRFProtect(app)
 
 DATABASE = os.environ.get('DATABASE_PATH', '/data/users.db')
 
@@ -47,8 +52,8 @@ def init_db():
     print("Base de datos inicializada con 9 usuarios (ahid1-ahid9)")
 
 def hash_password(password):
-    """Hashear contraseña con SHA256"""
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Hashear contraseña con PBKDF2"""
+    return generate_password_hash(password)
 
 def check_password_strength(password):
     """Verifica que la contraseña sea robusta"""
@@ -72,6 +77,13 @@ def require_auth(f):
             return redirect(url_for('login', rd=request.url))
         return f(*args, **kwargs)
     return decorated_function
+
+def is_safe_url(target):
+    """Verifica si una URL es segura para redireccionar"""
+    ref_url = urlparse(request.host_url)
+    test_url = urlparse(urljoin(request.host_url, target))
+    return test_url.scheme in ('http', 'https') and \
+           ref_url.netloc == test_url.netloc
 
 def is_user_locked(username):
     """Verifica si el usuario está bloqueado por intentos fallidos"""
@@ -160,7 +172,7 @@ def login():
         user = c.fetchone()
         conn.close()
         
-        if user and user[0] == hash_password(password):
+        if user and check_password_hash(user[0], password):
             # Login exitoso
             session.permanent = True
             session['username'] = username
@@ -183,7 +195,9 @@ def login():
                                       rd=request.args.get('rd', '/')))
             
             # Redirigir a donde venía o al portal
-            redirect_url = request.args.get('rd', '/')
+            redirect_url = request.args.get('rd')
+            if not redirect_url or not is_safe_url(redirect_url):
+                redirect_url = url_for('index')
             return redirect(redirect_url)
         else:
             # Login fallido
@@ -224,7 +238,7 @@ def force_change_password():
                  (session['username'],))
         user = c.fetchone()
         
-        if user and user[0] == hash_password(current_password):
+        if user and check_password_hash(user[0], current_password):
             # Actualizar contraseña
             new_hash = hash_password(new_password)
             c.execute('''
@@ -235,7 +249,9 @@ def force_change_password():
             conn.commit()
             conn.close()
             
-            redirect_url = request.args.get('rd', '/')
+            redirect_url = request.args.get('rd')
+            if not redirect_url or not is_safe_url(redirect_url):
+                redirect_url = url_for('index')
             return redirect(redirect_url)
         else:
             conn.close()
@@ -271,7 +287,7 @@ def change_password():
                  (session['username'],))
         user = c.fetchone()
         
-        if user and user[0] == hash_password(current_password):
+        if user and check_password_hash(user[0], current_password):
             new_hash = hash_password(new_password)
             c.execute('UPDATE users SET password_hash = ? WHERE username = ?',
                      (new_hash, session['username']))
