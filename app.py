@@ -1,4 +1,13 @@
-from flask import Flask, render_template, request, redirect, session, jsonify, url_for
+from flask import (
+    Flask,
+    g,
+    jsonify,
+    render_template,
+    request,
+    redirect,
+    session,
+    url_for,
+)
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import os
@@ -19,14 +28,33 @@ app.secret_key = SECRET_KEY
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=24)
 csrf = CSRFProtect(app)
 
-DATABASE = os.environ.get("DATABASE_PATH", "/data/users.db")
+DATABASE = os.environ.get("DATABASE_PATH", "/app/data/users.db")
+
+
+def get_db():
+    """Opens a new database connection if there is none yet for the
+    current application context.
+    """
+    if "db" not in g:
+        g.db = sqlite3.connect(DATABASE)
+        g.db.row_factory = sqlite3.Row
+    return g.db
+
+
+@app.teardown_appcontext
+def close_db(error):
+    """Closes the database again at the end of the request."""
+    db = g.pop("db", None)
+    if db is not None:
+        db.close()
 
 
 def init_db():
     """Inicializar la base de datos con los 9 usuarios"""
-    conn = sqlite3.connect(DATABASE)
-    c = conn.cursor()
-    c.execute("""
+    db = get_db()
+    c = db.cursor()
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
             password_hash TEXT NOT NULL,
@@ -37,7 +65,8 @@ def init_db():
             failed_attempts INTEGER DEFAULT 0,
             locked_until TIMESTAMP
         )
-    """)
+    """
+    )
 
     # Crear los 9 usuarios ahid1 a ahid9 con contraseña igual al usuario
     for i in range(1, 10):
@@ -52,8 +81,7 @@ def init_db():
             (username, password_hash, f"{username}@ardor.link"),
         )
 
-    conn.commit()
-    conn.close()
+    db.commit()
     print("Base de datos inicializada con 9 usuarios (ahid1-ahid9)")
 
 
@@ -98,11 +126,10 @@ def is_safe_url(target):
 
 def is_user_locked(username):
     """Verifica si el usuario está bloqueado por intentos fallidos"""
-    conn = sqlite3.connect(DATABASE)
-    c = conn.cursor()
+    db = get_db()
+    c = db.cursor()
     c.execute("SELECT locked_until FROM users WHERE username = ?", (username,))
     result = c.fetchone()
-    conn.close()
 
     if result and result[0]:
         locked_until = datetime.fromisoformat(result[0])
@@ -113,8 +140,8 @@ def is_user_locked(username):
 
 def record_failed_attempt(username):
     """Registra un intento fallido de login"""
-    conn = sqlite3.connect(DATABASE)
-    c = conn.cursor()
+    db = get_db()
+    c = db.cursor()
     c.execute("SELECT failed_attempts FROM users WHERE username = ?", (username,))
     result = c.fetchone()
 
@@ -141,14 +168,13 @@ def record_failed_attempt(username):
                 (failed_attempts, username),
             )
 
-    conn.commit()
-    conn.close()
+    db.commit()
 
 
 def reset_failed_attempts(username):
     """Resetea los intentos fallidos después de login exitoso"""
-    conn = sqlite3.connect(DATABASE)
-    c = conn.cursor()
+    db = get_db()
+    c = db.cursor()
     c.execute(
         """
         UPDATE users 
@@ -157,8 +183,7 @@ def reset_failed_attempts(username):
     """,
         (username,),
     )
-    conn.commit()
-    conn.close()
+    db.commit()
 
 
 @app.route("/")
@@ -190,8 +215,8 @@ def login():
                 error=f"Usuario bloqueado. Intenta en {minutes_left} minutos.",
             )
 
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
+        db = get_db()
+        c = db.cursor()
         c.execute(
             """
             SELECT password_hash, must_change_password, failed_attempts 
@@ -200,7 +225,6 @@ def login():
             (username,),
         )
         user = c.fetchone()
-        conn.close()
 
         if user and check_password_hash(user[0], password):
             # Login exitoso
@@ -212,14 +236,11 @@ def login():
             reset_failed_attempts(username)
 
             # Actualizar último login
-            conn = sqlite3.connect(DATABASE)
-            c = conn.cursor()
             c.execute(
                 "UPDATE users SET last_login = ? WHERE username = ?",
                 (datetime.now().isoformat(), username),
             )
-            conn.commit()
-            conn.close()
+            db.commit()
 
             # Si debe cambiar contraseña (primer login)
             if user[1] == 1:
@@ -269,8 +290,8 @@ def force_change_password():
             return render_template("first_login.html", error=message)
 
         # Verificar contraseña actual
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
+        db = get_db()
+        c = db.cursor()
         c.execute(
             "SELECT password_hash FROM users WHERE username = ?", (session["username"],)
         )
@@ -287,15 +308,13 @@ def force_change_password():
             """,
                 (new_hash, session["username"]),
             )
-            conn.commit()
-            conn.close()
+            db.commit()
 
             redirect_url = request.args.get("rd")
             if not redirect_url or not is_safe_url(redirect_url):
                 redirect_url = url_for("index")
             return redirect(redirect_url)
         else:
-            conn.close()
             return render_template(
                 "first_login.html", error="Contraseña actual incorrecta"
             )
@@ -314,7 +333,7 @@ def change_password():
 
         if not all([current_password, new_password, confirm_password]):
             return render_template(
-                "change_password.html", error="Todos los campos son requeridos"
+                "change_change.html", error="Todos los campos son requeridos"
             )
 
         if new_password != confirm_password:
@@ -326,8 +345,8 @@ def change_password():
         if not is_strong:
             return render_template("change_password.html", error=message)
 
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
+        db = get_db()
+        c = db.cursor()
         c.execute(
             "SELECT password_hash FROM users WHERE username = ?", (session["username"],)
         )
@@ -339,13 +358,11 @@ def change_password():
                 "UPDATE users SET password_hash = ? WHERE username = ?",
                 (new_hash, session["username"]),
             )
-            conn.commit()
-            conn.close()
+            db.commit()
             return render_template(
                 "change_password.html", success="Contraseña cambiada exitosamente"
             )
         else:
-            conn.close()
             return render_template(
                 "change_password.html", error="Contraseña actual incorrecta"
             )
@@ -360,14 +377,13 @@ def auth_validate():
         username = session.get("username", "")
 
         # Verificar que no necesite cambiar contraseña
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
+        db = get_db()
+        c = db.cursor()
         c.execute(
             "SELECT must_change_password, email FROM users WHERE username = ?",
             (username,),
         )
         user = c.fetchone()
-        conn.close()
 
         if user and user[0] == 1:
             # Debe cambiar contraseña, no autorizar
@@ -401,11 +417,10 @@ def oauth_userinfo():
     """Endpoint para información del usuario"""
     if session.get("authenticated"):
         username = session.get("username", "")
-        conn = sqlite3.connect(DATABASE)
-        c = conn.cursor()
+        db = get_db()
+        c = db.cursor()
         c.execute("SELECT email FROM users WHERE username = ?", (username,))
         user = c.fetchone()
-        conn.close()
 
         email = user[0] if user else f"{username}@ardor.link"
         return jsonify({"sub": username, "email": email, "name": username})
@@ -424,7 +439,8 @@ if __name__ == "__main__":
     os.makedirs(os.path.dirname(DATABASE), exist_ok=True)
 
     # Inicializar base de datos
-    init_db()
+    with app.app_context():
+        init_db()
 
     # Ejecutar app
     app.run(host="0.0.0.0", port=5000, debug=False)

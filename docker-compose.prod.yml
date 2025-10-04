@@ -3,10 +3,11 @@ services:
     image: ghcr.io/dvadell/oauth_proxy_custom:latest
     container_name: auth-app
     volumes:
-      - auth-app-data:/data
+      - auth-app-data:/app/data
     environment:
-      - DATABASE_PATH=/data/users.db
+      - DATABASE_PATH=/app/data/users.db
       - FLASK_ENV=production
+      - SECRET_KEY=__CHANGE_ME__
     ports:
       - "7906:5000"  # Flask app - Expuesto para NPM
     restart: unless-stopped
