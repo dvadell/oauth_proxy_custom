@@ -284,6 +284,7 @@ def login():
 
         if user and check_password_hash(user[0], password):
             # Login exitoso
+            session.clear()
             session.permanent = True
             session["username"] = username
             session["authenticated"] = True
@@ -429,6 +430,7 @@ def change_password():
 
 
 @app.route("/auth/validate")
+@csrf.exempt
 def auth_validate():
     """Endpoint para nginx auth_request - valida si el usuario está autenticado"""
     if session.get("authenticated"):
