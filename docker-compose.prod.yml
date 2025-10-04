@@ -8,6 +8,7 @@ services:
       - DATABASE_PATH=/app/data/users.db
       - FLASK_ENV=production
       - SECRET_KEY=__CHANGE_ME__
+      - ALLOWED_REDIRECT_DOMAIN=ardor.link
     ports:
       - "7906:5000"  # Flask app - Expuesto para NPM
     restart: unless-stopped

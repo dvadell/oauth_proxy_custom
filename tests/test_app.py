@@ -1,3 +1,6 @@
+import os
+
+
 def test_index_logged_out(client):
     """Test that the index page redirects to login when logged out."""
     response = client.get("/")
@@ -107,3 +110,37 @@ def test_auth_validate_logged_in_success(client):
     assert response.status_code == 200
     assert response.headers["X-Auth-Request-User"] == "ahid5"
     assert response.headers["X-Auth-Request-Email"] == "ahid5@ardor.link"
+
+
+def test_login_redirect_rd_parameter(client):
+    """Test that login redirects to the 'rd' parameter if safe and provided."""
+    os.environ["ALLOWED_REDIRECT_DOMAIN"] = "ardor.link"  # Set for this test
+    # Create a user that does not need to change password
+    from app import get_db, hash_password
+
+    db = get_db()
+    c = db.cursor()
+    username = "testuser_rd"
+    password = "testpassword_rd"
+    password_hash = hash_password(password)
+    c.execute(
+        """
+        INSERT OR IGNORE INTO users
+        (username, password_hash, email, must_change_password)
+        VALUES (?, ?, ?, 0)
+        """,
+        (username, password_hash, f"{username}@ardor.link"),
+    )
+    db.commit()
+
+    redirect_target = "https://test.of.ardor.link/some/path"
+    response = client.post(
+        f"/login?rd={redirect_target}",
+        data={"username": username, "password": password},
+        headers={
+            "Host": "auth.of.ardor.link"
+        },  # Simulate request from auth.of.ardor.link
+        follow_redirects=False,  # Do not follow redirect to check the Location header
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"] == redirect_target

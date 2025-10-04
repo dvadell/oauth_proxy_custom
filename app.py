@@ -24,6 +24,12 @@ if not SECRET_KEY:
         "No SECRET_KEY set for Flask application. Please set it as an environment variable for production."
     )
 
+ALLOWED_REDIRECT_DOMAIN = os.environ.get("ALLOWED_REDIRECT_DOMAIN")
+if not ALLOWED_REDIRECT_DOMAIN:
+    print(
+        "WARNING: ALLOWED_REDIRECT_DOMAIN is not set. Falling back to deriving from request.host_url."
+    )
+
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=24)
@@ -90,11 +96,13 @@ def init_db():
     db.close()
     print("Base de datos inicializada con 9 usuarios (ahid1-ahid9)")
 
+
 @app.cli.command("init-db")
 def init_db_command():
     """Clear existing data and create new tables."""
     init_db()
     click.echo("Initialized the database.")
+
 
 def hash_password(password):
     """Hashear contraseña con PBKDF2"""
@@ -132,7 +140,28 @@ def is_safe_url(target):
     """Verifica si una URL es segura para redireccionar"""
     ref_url = urlparse(request.host_url)
     test_url = urlparse(urljoin(request.host_url, target))
-    return test_url.scheme in ("http", "https") and ref_url.netloc == test_url.netloc
+
+    if ALLOWED_REDIRECT_DOMAIN:
+        # Use the configured allowed domain
+        base_domain_check = (
+            test_url.netloc == ALLOWED_REDIRECT_DOMAIN
+            or test_url.netloc.endswith(f".{ALLOWED_REDIRECT_DOMAIN}")
+        )
+    else:
+        # Fallback to deriving from host_url if not configured
+        host_parts = ref_url.netloc.split(".")
+        if len(host_parts) >= 2:
+            derived_base_domain = ".".join(host_parts[-2:])
+        else:
+            derived_base_domain = ref_url.netloc
+
+        base_domain_check = (
+            test_url.netloc == ref_url.netloc
+            or test_url.netloc.endswith(f".{derived_base_domain}")
+            or test_url.netloc == derived_base_domain
+        )
+
+    return test_url.scheme in ("http", "https") and base_domain_check
 
 
 def is_user_locked(username):
