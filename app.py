@@ -7,6 +7,7 @@ from flask import (
     redirect,
     session,
     url_for,
+    flash,
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
@@ -134,6 +135,10 @@ def require_auth(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if "username" not in session:
+            # Preserve the original 'rd' if it exists, otherwise use the current URL
+            original_rd = request.args.get("rd")
+            if original_rd and is_safe_url(original_rd):
+                return redirect(url_for("login", rd=original_rd))
             return redirect(url_for("login", rd=request.url))
         return f(*args, **kwargs)
 
@@ -142,17 +147,24 @@ def require_auth(f):
 
 def is_safe_url(target):
     """Verifica si una URL es segura para redireccionar"""
-    ref_url = urlparse(request.host_url)
-    test_url = urlparse(urljoin(request.host_url, target))
+    # Parse the target URL directly
+    test_url = urlparse(target)
 
-    if ALLOWED_REDIRECT_DOMAIN:
-        # Use the configured allowed domain
+    if not test_url.netloc:
+        # If no netloc, it's a relative URL, consider it safe if it's within the app
+        return True
+
+    # Use app.config.get to retrieve ALLOWED_REDIRECT_DOMAIN
+    configured_allowed_domain = app.config.get("ALLOWED_REDIRECT_DOMAIN")
+
+    if configured_allowed_domain:
         base_domain_check = (
-            test_url.netloc == ALLOWED_REDIRECT_DOMAIN
-            or test_url.netloc.endswith(f".{ALLOWED_REDIRECT_DOMAIN}")
+            test_url.netloc == configured_allowed_domain
+            or test_url.netloc.endswith(f".{configured_allowed_domain}")
         )
     else:
         # Fallback to deriving from host_url if not configured
+        ref_url = urlparse(request.host_url)
         host_parts = ref_url.netloc.split(".")
         if len(host_parts) >= 2:
             derived_base_domain = ".".join(host_parts[-2:])
@@ -403,9 +415,11 @@ def change_password():
                 (new_hash, session["username"]),
             )
             db.commit()
-            return render_template(
-                "change_password.html", success="Contraseña cambiada exitosamente"
-            )
+            flash("Contraseña cambiada exitosamente", "success")
+            redirect_url = request.args.get("rd")
+            if not redirect_url or not is_safe_url(redirect_url):
+                redirect_url = url_for("index")
+            return redirect(redirect_url)
         else:
             return render_template(
                 "change_password.html", error="Contraseña actual incorrecta"

@@ -1,4 +1,6 @@
 import os
+import sqlite3
+from app import get_db, hash_password, DATABASE
 
 
 def test_index_logged_out(client):
@@ -54,22 +56,18 @@ def test_index_logged_in(client):
 
 def test_brute_force_lockout(client):
     """Test that 6 failed login attempts lock the account."""
-    # Attempts 1-4 should show incorrect password
     for i in range(4):
         res = client.post("/login", data={"username": "ahid3", "password": "wrong"})
         assert b"Usuario o contrase" in res.data
         assert b"Usuario bloqueado" not in res.data
 
-    # The 5th attempt records the final failure and locks the account
     res = client.post("/login", data={"username": "ahid3", "password": "wrong"})
     assert b"Usuario o contrase" in res.data
     assert b"Usuario bloqueado" not in res.data
 
-    # The 6th attempt should find the user is locked
     res = client.post("/login", data={"username": "ahid3", "password": "wrong"})
     assert b"Usuario bloqueado" in res.data
 
-    # A correct login should also fail now
     res = client.post("/login", data={"username": "ahid3", "password": "ahid3"})
     assert b"Usuario bloqueado" in res.data
 
@@ -84,40 +82,37 @@ def test_auth_validate_logged_in_must_change_password(client):
     """Test /auth/validate when user must change password."""
     client.post("/login", data={"username": "ahid4", "password": "ahid4"})
     response = client.get("/auth/validate")
-    assert response.status_code == 401  # Should be unauthorized
+    assert response.status_code == 401
 
 
 def test_auth_validate_logged_in_success(client):
     """Test a successful /auth/validate call."""
-    # Log in
-    client.post("/login", data={"username": "ahid5", "password": "ahid5"})
-
-    # Manually change password to pass the check
-    with client.session_transaction() as sess:
-        username = sess["username"]
-
-    from app import DATABASE
-    import sqlite3
-
-    conn = sqlite3.connect(DATABASE)
-    conn.execute(
-        "UPDATE users SET must_change_password = 0 WHERE username = ?", (username,)
+    db = get_db()
+    c = db.cursor()
+    username = "ahid5_no_force_change"
+    password = "ahid5_password"
+    password_hash = hash_password(password)
+    c.execute(
+        """
+        INSERT OR IGNORE INTO users
+        (username, password_hash, email, must_change_password)
+        VALUES (?, ?, ?, 0)
+        """,
+        (username, password_hash, f"{username}@ardor.link"),
     )
-    conn.commit()
-    conn.close()
+    db.commit()
+
+    client.post("/login", data={"username": username, "password": password})
 
     response = client.get("/auth/validate")
     assert response.status_code == 200
-    assert response.headers["X-Auth-Request-User"] == "ahid5"
-    assert response.headers["X-Auth-Request-Email"] == "ahid5@ardor.link"
+    assert response.headers["X-Auth-Request-User"] == username
+    assert response.headers["X-Auth-Request-Email"] == f"{username}@ardor.link"
 
 
 def test_login_redirect_rd_parameter(client):
     """Test that login redirects to the 'rd' parameter if safe and provided."""
-    os.environ["ALLOWED_REDIRECT_DOMAIN"] = "ardor.link"  # Set for this test
-    # Create a user that does not need to change password
-    from app import get_db, hash_password
-
+    os.environ["ALLOWED_REDIRECT_DOMAIN"] = "ardor.link"
     db = get_db()
     c = db.cursor()
     username = "testuser_rd"
@@ -139,8 +134,157 @@ def test_login_redirect_rd_parameter(client):
         data={"username": username, "password": password},
         headers={
             "Host": "auth.of.ardor.link"
-        },  # Simulate request from auth.of.ardor.link
-        follow_redirects=False,  # Do not follow redirect to check the Location header
+        },
+        follow_redirects=False,
     )
     assert response.status_code == 302
     assert response.headers["Location"] == redirect_target
+
+
+def test_session_persistence_after_login(client):
+    """Test that the session persists after a successful login."""
+    os.environ["ALLOWED_REDIRECT_DOMAIN"] = "ardor.link"
+
+    db = get_db()
+    c = db.cursor()
+    username = "session_test_user"
+    password = "Session_Pass_123!"
+    password_hash = hash_password(password)
+    c.execute(
+        """
+        INSERT OR IGNORE INTO users
+        (username, password_hash, email, must_change_password)
+        VALUES (?, ?, ?, 0)
+        """,
+        (username, password_hash, f"{username}@ardor.link"),
+    )
+    db.commit()
+
+    # Log in the user
+    client.post("/login", data={"username": username, "password": password}, follow_redirects=True)
+
+    # Access a protected page (e.g., the portal page)
+    response = client.get("/")
+    assert response.status_code == 200
+    assert b"Portal de Usuario" in response.data
+
+    # Check that the session is still active
+    with client.session_transaction() as sess:
+        assert sess["authenticated"] is True
+        assert sess["username"] == username
+
+
+def test_change_password_redirect_no_rd(client):
+    """Test that change password redirects to index when no rd parameter is provided."""
+    os.environ["ALLOWED_REDIRECT_DOMAIN"] = "ardor.link"
+
+    db = get_db()
+    c = db.cursor()
+    username = "ahid_change_pass_no_rd"
+    old_password = "old_pass_123"
+    new_password = "New_Pass_456!"
+    password_hash = hash_password(old_password)
+    c.execute(
+        """
+        INSERT OR IGNORE INTO users
+        (username, password_hash, email, must_change_password)
+        VALUES (?, ?, ?, 0)
+        """,
+        (username, password_hash, f"{username}@ardor.link"),
+    )
+    db.commit()
+
+    client.post("/login", data={"username": username, "password": old_password}, follow_redirects=True)
+
+    # Access a protected page to ensure session is active
+    client.get("/")
+
+    response = client.post(
+        "/change-password",
+        data={
+            "current_password": old_password,
+            "new_password": new_password,
+            "confirm_password": new_password,
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/"
+
+
+def test_change_password_redirect_safe_rd(client):
+    """Test that change password redirects to safe rd parameter."""
+    os.environ["ALLOWED_REDIRECT_DOMAIN"] = "ardor.link"
+
+    db = get_db()
+    c = db.cursor()
+    username = "ahid_change_pass_safe_rd"
+    old_password = "old_pass_123"
+    new_password = "New_Pass_456!"
+    password_hash = hash_password(old_password)
+    c.execute(
+        """
+        INSERT OR IGNORE INTO users
+        (username, password_hash, email, must_change_password)
+        VALUES (?, ?, ?, 0)
+        """,
+        (username, password_hash, f"{username}@ardor.link"),
+    )
+    db.commit()
+
+    client.post("/login", data={"username": username, "password": old_password}, follow_redirects=True)
+
+    # Access a protected page to ensure session is active
+    client.get("/")
+
+    safe_redirect_target = "https://test.of.ardor.link/dashboard"
+    response = client.post(
+        f"/change-password?rd={safe_redirect_target}",
+        data={
+            "current_password": old_password,
+            "new_password": new_password,
+            "confirm_password": new_password,
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"] == safe_redirect_target
+
+
+def test_change_password_redirect_unsafe_rd(client):
+    """Test that change password redirects to index when unsafe rd parameter is provided."""
+    os.environ["ALLOWED_REDIRECT_DOMAIN"] = "ardor.link"
+
+    db = get_db()
+    c = db.cursor()
+    username = "ahid_change_pass_unsafe_rd"
+    old_password = "old_pass_123"
+    new_password = "New_Pass_456!"
+    password_hash = hash_password(old_password)
+    c.execute(
+        """
+        INSERT OR IGNORE INTO users
+        (username, password_hash, email, must_change_password)
+        VALUES (?, ?, ?, 0)
+        """,
+        (username, password_hash, f"{username}@ardor.link"),
+    )
+    db.commit()
+
+    client.post("/login", data={"username": username, "password": old_password}, follow_redirects=True)
+
+    # Access a protected page to ensure session is active
+    client.get("/")
+
+    unsafe_redirect_target = "https://evil.com/malicious"
+    response = client.post(
+        f"/change-password?rd={unsafe_redirect_target}",
+        data={
+            "current_password": old_password,
+            "new_password": new_password,
+            "confirm_password": new_password,
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/"
