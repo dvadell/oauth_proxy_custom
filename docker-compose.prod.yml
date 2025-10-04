@@ -9,6 +9,7 @@ services:
       - FLASK_ENV=production
       - SECRET_KEY=__CHANGE_ME__
       - ALLOWED_REDIRECT_DOMAIN=ardor.link
+      - SESSION_TIMEOUT_HOURS=24
     ports:
       - "7906:5000"  # Flask app - Expuesto para NPM
     restart: unless-stopped

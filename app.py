@@ -30,9 +30,13 @@ if not ALLOWED_REDIRECT_DOMAIN:
         "WARNING: ALLOWED_REDIRECT_DOMAIN is not set. Falling back to deriving from request.host_url."
     )
 
+SESSION_TIMEOUT_HOURS = int(os.environ.get("SESSION_TIMEOUT_HOURS", 24))
+
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
-app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=24)
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=SESSION_TIMEOUT_HOURS)
+if ALLOWED_REDIRECT_DOMAIN:
+    app.config["SESSION_COOKIE_DOMAIN"] = f".{ALLOWED_REDIRECT_DOMAIN}"
 csrf = CSRFProtect(app)
 
 # Get the directory where this script is located
