@@ -13,6 +13,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import os
 import click
+import re
 from datetime import datetime, timedelta
 from functools import wraps
 from urllib.parse import urlparse
@@ -301,6 +302,41 @@ def index():
     return redirect(url_for("login"))
 
 
+def validate_username(username):
+    """
+    Validate username format
+    - Length: 1-50 characters
+    - Allowed characters: alphanumeric, underscore, hyphen, period
+    """
+    if not username:
+        return False, "El nombre de usuario es requerido"
+
+    if len(username) > 50:
+        return False, "El nombre de usuario es demasiado largo (máximo 50 caracteres)"
+
+    # Allow alphanumeric, underscore, hyphen, and period
+    if not re.match(r"^[a-zA-Z0-9_.-]+$", username):
+        return (
+            False,
+            "El nombre de usuario solo puede contener letras, números, guiones, puntos y guiones bajos",
+        )
+
+    # Optional: prevent usernames that start/end with special chars or have consecutive special chars
+    if username[0] in ".-_" or username[-1] in ".-_":
+        return (
+            False,
+            "El nombre de usuario no puede comenzar o terminar con caracteres especiales",
+        )
+
+    if ".." in username or "--" in username or "__" in username:
+        return (
+            False,
+            "El nombre de usuario no puede contener caracteres especiales consecutivos",
+        )
+
+    return True, "OK"
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     """Página de login"""
@@ -308,7 +344,12 @@ def login():
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
 
-        if not username or not password:
+        # Validate username format
+        is_valid, error_msg = validate_username(username)
+        if not is_valid:
+            return render_template("login.html", error=error_msg)
+
+        if not password:
             return render_template(
                 "login.html", error="Usuario y contraseña son requeridos"
             )
@@ -543,6 +584,30 @@ def logout():
     """Cerrar sesión"""
     session.clear()
     return redirect(url_for("login"))
+
+
+@app.errorhandler(404)
+def not_found_error(error):
+    """Handle 404 errors"""
+    return render_template("404.html"), 404
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 errors"""
+    # Log the error for debugging
+    app.logger.error(f"Server Error: {error}")
+    # Roll back any database changes
+    db = g.pop("db", None)
+    if db is not None:
+        db.close()
+    return render_template("500.html"), 500
+
+
+@app.errorhandler(403)
+def forbidden_error(error):
+    """Handle 403 errors"""
+    return render_template("403.html"), 403
 
 
 if __name__ == "__main__":
