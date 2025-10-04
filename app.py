@@ -35,6 +35,11 @@ SESSION_TIMEOUT_HOURS = int(os.environ.get("SESSION_TIMEOUT_HOURS", 24))
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+app.config.update(
+    SESSION_COOKIE_SECURE=True,      # HTTPS only
+    SESSION_COOKIE_HTTPONLY=True,    # No JavaScript access
+    SESSION_COOKIE_SAMESITE='Lax',   # CSRF protection
+)
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=SESSION_TIMEOUT_HOURS)
 if ALLOWED_REDIRECT_DOMAIN:
     app.config["SESSION_COOKIE_DOMAIN"] = f".{ALLOWED_REDIRECT_DOMAIN}"
@@ -390,7 +395,7 @@ def change_password():
 
         if not all([current_password, new_password, confirm_password]):
             return render_template(
-                "change_change.html", error="Todos los campos son requeridos"
+                "change_password.html", error="Todos los campos son requeridos"
             )
 
         if new_password != confirm_password:
