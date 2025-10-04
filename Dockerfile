@@ -9,6 +9,9 @@ RUN pip install -v --no-cache-dir -r requirements.txt
 # Copiar código de la aplicación
 COPY . .
 
+# Set flask app environment variable
+ENV FLASK_APP=app.py
+
 # Crear directorio para la base de datos
 RUN mkdir -p /data
 
@@ -16,4 +19,4 @@ RUN mkdir -p /data
 EXPOSE 5000
 
 # Comando para ejecutar la aplicación
-CMD ["python", "app.py"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]

@@ -11,6 +11,7 @@ from flask import (
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import os
+import click
 from datetime import datetime, timedelta
 from functools import wraps
 from urllib.parse import urlparse, urljoin
@@ -28,7 +29,11 @@ app.secret_key = SECRET_KEY
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=24)
 csrf = CSRFProtect(app)
 
-DATABASE = os.environ.get("DATABASE_PATH", "/app/data/users.db")
+# Get the directory where this script is located
+APP_ROOT = os.path.dirname(os.path.abspath(__file__))
+# Define the default database path relative to the app root
+DEFAULT_DB_PATH = os.path.join(APP_ROOT, "data", "users.db")
+DATABASE = os.environ.get("DATABASE_PATH", DEFAULT_DB_PATH)
 
 
 def get_db():
@@ -51,7 +56,7 @@ def close_db(error):
 
 def init_db():
     """Inicializar la base de datos con los 9 usuarios"""
-    db = get_db()
+    db = sqlite3.connect(DATABASE)
     c = db.cursor()
     c.execute(
         """
@@ -82,8 +87,14 @@ def init_db():
         )
 
     db.commit()
+    db.close()
     print("Base de datos inicializada con 9 usuarios (ahid1-ahid9)")
 
+@app.cli.command("init-db")
+def init_db_command():
+    """Clear existing data and create new tables."""
+    init_db()
+    click.echo("Initialized the database.")
 
 def hash_password(password):
     """Hashear contraseña con PBKDF2"""
@@ -437,10 +448,6 @@ def logout():
 if __name__ == "__main__":
     # Crear directorio de datos si no existe
     os.makedirs(os.path.dirname(DATABASE), exist_ok=True)
-
-    # Inicializar base de datos
-    with app.app_context():
-        init_db()
 
     # Ejecutar app
     app.run(host="0.0.0.0", port=5000, debug=False)
